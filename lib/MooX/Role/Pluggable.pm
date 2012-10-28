@@ -1,5 +1,5 @@
 package MooX::Role::Pluggable;
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 use 5.10.1;
 use Moo::Role;
@@ -22,7 +22,7 @@ has '__pluggable_opts' => (
    +{
       reg_prefix => 'plugin_',
       ev_prefix  => 'plugin_ev_',
-      types      => { PROCESS => 'P',  NOTIFY => 'N' },
+      types      => +{ PROCESS => 'P',  NOTIFY => 'N' },
     },
   },
 );
@@ -90,8 +90,7 @@ sub _pluggable_process {
   my ($self, $type, $event, $args) = @_;
 
   ## This is essentially the same logic as Object::Pluggable.
-  ## Profiled and tightened up a bit, but the accessors are a bit
-  ## of a hit.
+  ## Profiled and tightened up a bit . . .
   ## I'm open to optimization ideas . . .
   unless (ref $args) {
     confess 'Expected a type, event, and (possibly empty) args ARRAY'
@@ -107,15 +106,15 @@ sub _pluggable_process {
 
   local $@;
 
-  if      ( $self->can($meth) ) {
+  if      ( my $sub = $self->can($meth) ) {
     ## Dispatch to ourself
-    eval { $self_ret = $self->$meth($self, \(@$args), \@extra) };
-    ## Skipping MRO got me over 7100 calls/sec on my system.
+    eval {; $self_ret = $self->$sub($self, \(@$args), \@extra) };
+    ## Skipping method resolution got me over 7100 calls/sec on my system.
     ## I'm not sorry:
     __plugin_process_chk($self, $self, $meth, $self_ret);
-  } elsif ( $self->can('_default') ) {
+  } elsif ( $sub = $self->can('_default') ) {
     ## Dispatch to _default
-    eval { $self_ret = $self->_default($self, $meth, \(@$args), \@extra) };
+    eval {; $self_ret = $self->$sub($self, $meth, \(@$args), \@extra) };
     __plugin_process_chk($self, $self, '_default', $self_ret);
   }
 
@@ -144,7 +143,6 @@ sub _pluggable_process {
 
     if ( 
          $self == $thisplug
-      || !exists $handle_ref->{$thisplug}->{$type}
       || (
              !exists $handle_ref->{$thisplug}->{$type}->{$event}
           && !exists $handle_ref->{$thisplug}->{$type}->{all}
@@ -154,13 +152,13 @@ sub _pluggable_process {
     }
 
     undef $plug_ret;
-    my $this_alias = ($self->__plugin_get_plug_any($thisplug))[0];
+    my $this_alias = $self->__plugin_by_ref($thisplug);
 
-    if      ( $thisplug->can($meth) ) {
-      eval { $plug_ret = $thisplug->$meth($self, \(@$args), \@extra) };
+    if      ( my $sub = $thisplug->can($meth) ) {
+      eval {; $plug_ret = $thisplug->$sub($self, \(@$args), \@extra) };
       __plugin_process_chk($self, $thisplug, $meth, $plug_ret, $this_alias);
-    } elsif ( $thisplug->can('_default') ) {
-      eval { $plug_ret = $thisplug->$meth($self, \(@$args), \@extra) };
+    } elsif ( $sub = $thisplug->can('_default') ) {
+      eval {; $plug_ret = $thisplug->$sub($self, \(@$args), \@extra) };
       __plugin_process_chk($self, $thisplug, '_default', $plug_ret, $this_alias);
     }
 
@@ -191,10 +189,12 @@ sub _pluggable_process {
 }
 
 sub __plugin_process_chk {
-#  my ($self, $obj, $meth, $retval, $src) = @_;
+  ## Ugly as sin, but fast if there are no errors, which matters here.
+
   if ($@) {
     chomp $@;
     my ($self, $obj, $meth, undef, $src) = @_;
+
     my $e_src = defined $src ? "plugin '$src'" : 'self' ;
     my $err = "$meth call on $e_src failed: $@";
 
@@ -203,21 +203,19 @@ sub __plugin_process_chk {
     $self->_pluggable_event(
       $self->__pluggable_opts->{ev_prefix} . "plugin_error",
       $err,
-      ( $obj == $self ? ($obj, $src) : () ),
+      $obj,
+      $e_src
     );
 
     return
   }
 
-  my $retval = $_[3];
+  if (! defined $_[3] ||
+      ( $_[3] != EAT_NONE   && $_[3] != EAT_ALL &&
+        $_[3] != EAT_CLIENT && $_[3] != EAT_PLUGIN ) ) {
 
-  if (! defined $retval ||
-    (
-        $retval != EAT_NONE   && $retval != EAT_PLUGIN
-     && $retval != EAT_CLIENT && $retval != EAT_ALL
-    ) 
-  ) {
     my ($self, $obj, $meth, undef, $src) = @_;
+
     my $e_src = defined $src ? "plugin '$src'" : 'self' ;
     my $err = "$meth call on $e_src did not return a valid EAT_ constant";
 
@@ -226,7 +224,8 @@ sub __plugin_process_chk {
     $self->_pluggable_event(
       $self->__pluggable_opts->{ev_prefix} . "plugin_error",
       $err,
-      ( $obj == $self ? ($obj, $src) : () ),
+      $obj,
+      $e_src
     );
 
     return
@@ -1253,18 +1252,17 @@ certainly open to ideas ;-)
 Some L<Benchmark> runs. 30000 L</_pluggable_process> calls with 20 loaded 
 plugins dispatching one argument to one handler that does nothing except 
 return EAT_NONE:
+                       Rate
+	object-pluggable     6148/s
+	moox-role-pluggable  8065/s
 
-                        Rate
-  object-pluggable    6122/s
-  moox-role-pluggable 6787/s
+                       Rate
+	object-pluggable     6098/s
+	moox-role-pluggable  8108/s
 
-                        Rate
-  object-pluggable    6186/s
-  moox-role-pluggable 6912/s
-
-                        Rate
-  object-pluggable    6186/s
-  moox-role-pluggable 7143/s
+                       Rate
+	object-pluggable     6122/s
+	moox-role-pluggable  8174/s
 
 (Benchmark script is available in the C<bench/> directory of the upstream 
 repository; see L<https://github.com/avenj/moox-role-pluggable>)
