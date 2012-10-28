@@ -1,5 +1,5 @@
 package MooX::Role::Pluggable;
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 use Moo::Role;
 
@@ -88,32 +88,32 @@ sub _pluggable_process {
   ## of a hit.
   ## I'm open to optimization ideas . . .
   unless (ref $args) {
-    confess "Expected a type, event, and (possibly empty) args ARRAY"
+    confess 'Expected a type, event, and (possibly empty) args ARRAY'
   }
 
   my $prefix = $self->__pluggable_opts->{ev_prefix};
   substr($event, 0, length($prefix), '')
     if index($event, $prefix) == 0;
 
-  my $meth = join '_', $self->__pluggable_opts->{types}->{$type}, $event;
+  my $meth = $self->__pluggable_opts->{types}->{$type} .'_'. $event;
 
-  my $retval = my $self_ret = EAT_NONE;
-
-  my @extra;
+  my ($retval, $self_ret, @extra) = EAT_NONE;
 
   local $@;
 
   if      ( $self->can($meth) ) {
     ## Dispatch to ourself
     eval { $self_ret = $self->$meth($self, \(@$args), \@extra) };
-    $self->__plugin_process_chk($self, $meth, $self_ret);
+    ## Skipping MRO got me over 7100 calls/sec on my system.
+    ## I'm not sorry:
+    __plugin_process_chk($self, $self, $meth, $self_ret);
   } elsif ( $self->can('_default') ) {
     ## Dispatch to _default
     eval { $self_ret = $self->_default($self, $meth, \(@$args), \@extra) };
-    $self->__plugin_process_chk($self, '_default', $self_ret);
+    __plugin_process_chk($self, $self, '_default', $self_ret);
   }
 
-  if      (! defined $self_ret ) {
+  if      (! defined $self_ret) {
     ## No-op.
   } elsif ( $self_ret == EAT_PLUGIN ) {
      ## Don't plugin-process, just return EAT_NONE.
@@ -133,6 +133,7 @@ sub _pluggable_process {
 
   my $handle_ref = $self->__pluggable_loaded->{HANDLE};
 
+  my $plug_ret;
   PLUG: for my $thisplug (@{ $self->__pluggable_pipeline }) {
 
     if ( 
@@ -146,15 +147,15 @@ sub _pluggable_process {
       next PLUG
     }
 
-    my $plug_ret   = EAT_NONE;
+    undef $plug_ret;
     my $this_alias = ($self->__plugin_get_plug_any($thisplug))[0];
 
     if      ( $thisplug->can($meth) ) {
       eval { $plug_ret = $thisplug->$meth($self, \(@$args), \@extra) };
-      $self->__plugin_process_chk($thisplug, $meth, $plug_ret, $this_alias);
+      __plugin_process_chk($self, $thisplug, $meth, $plug_ret, $this_alias);
     } elsif ( $thisplug->can('_default') ) {
       eval { $plug_ret = $thisplug->$meth($self, \(@$args), \@extra) };
-      $self->__plugin_process_chk($thisplug, '_default', $plug_ret, $this_alias);
+      __plugin_process_chk($self, $thisplug, '_default', $plug_ret, $this_alias);
     }
 
     if      (! defined $plug_ret) {
@@ -184,12 +185,12 @@ sub _pluggable_process {
 }
 
 sub __plugin_process_chk {
-  my ($self, $obj, $meth, $retval, $src) = @_;
-  $src = defined $src ? "plugin '$src'" : "self" ;
-
+#  my ($self, $obj, $meth, $retval, $src) = @_;
   if ($@) {
     chomp $@;
-    my $err = "$meth call on $src failed: $@";
+    my ($self, $obj, $meth, undef, $src) = @_;
+    my $e_src = defined $src ? "plugin '$src'" : 'self' ;
+    my $err = "$meth call on $e_src failed: $@";
 
     warn "$err\n";
 
@@ -202,15 +203,17 @@ sub __plugin_process_chk {
     return
   }
 
-  if (! defined $retval ||
-   (
-        $retval != EAT_NONE
-     && $retval != EAT_PLUGIN
-     && $retval != EAT_CLIENT
-     && $retval != EAT_ALL
-   ) ) {
+  my $retval = $_[3];
 
-    my $err = "$meth call on $src did not return a valid EAT_ constant";
+  if (! defined $retval ||
+    (
+        $retval != EAT_NONE   && $retval != EAT_PLUGIN
+     && $retval != EAT_CLIENT && $retval != EAT_ALL
+    ) 
+  ) {
+    my ($self, $obj, $meth, undef, $src) = @_;
+    my $e_src = defined $src ? "plugin '$src'" : 'self' ;
+    my $err = "$meth call on $e_src did not return a valid EAT_ constant";
 
     warn "$err\n";
 
@@ -864,7 +867,8 @@ as well as a flexible dispatch system (see L</_pluggable_process>).
 
 The logic and behavior is based almost entirely on L<Object::Pluggable>. 
 Some methods are the same; implementation & interface differ some and you 
-will still want to read thoroughly if coming from L<Object::Pluggable>.
+will still want to read thoroughly if coming from L<Object::Pluggable>. 
+Dispatch is a bit faster -- see L</Performance>.
 
 It may be worth noting that this is nothing at all like the Moose 
 counterpart L<MooseX::Role::Pluggable>. If the names confuse ... well, I 
@@ -914,8 +918,9 @@ as prefixes):
   },
 
 A '_' is automatically appended to event type prefixes when events are 
-dispatched via L</_pluggable>, but not to C<reg_prefix>/C<event_prefix>. An 
-empty string C<reg_prefix>/C<event_prefix> is valid.
+dispatched via L</_pluggable_process>, but not to 
+C<reg_prefix>/C<event_prefix>.
+An empty string C<reg_prefix>/C<event_prefix> is valid.
 
 =head3 _pluggable_destroy
 
@@ -1233,6 +1238,30 @@ Arguments are the new plugin alias and object, respectively.
 Issued via L</_pluggable_event> when a plugin is unregistered.
 
 Arguments are the old plugin alias and object, respectively.
+
+=head2 Performance
+
+Dispatcher performance has been profiled and optimized, but I'm most 
+certainly open to ideas ;-)
+
+Some L<Benchmark> runs. 30000 L</_pluggable_process> calls with 20 loaded 
+plugins dispatching one argument to one handler that does nothing except 
+return EAT_NONE:
+
+                        Rate
+  object-pluggable    6122/s
+  moox-role-pluggable 6787/s
+
+                        Rate
+  object-pluggable    6186/s
+  moox-role-pluggable 6912/s
+
+                        Rate
+  object-pluggable    6186/s
+  moox-role-pluggable 7143/s
+
+(Benchmark script is available in the C<bench/> directory of the upstream 
+repository; see L<https://github.com/avenj/moox-role-pluggable>)
 
 =head1 AUTHOR
 
