@@ -19,7 +19,7 @@ my $build = Module::Build->new(
 
   build_requires => {
     'Test::More'      => 0,
-#    'Test::Exception' => 0,
+    'Test::Exception' => 0,
   },
 
   requires => {
@@ -35,6 +35,13 @@ my $build = Module::Build->new(
     'Moo::Role'               => 0,
     'Try::Tiny'               => 0,
   },
+
+  meta_merge => {
+    resources => {
+      repository => 'http://github.com/avenj/moox-role-pluggable.git',
+    },
+  },
+
 );
 
 $build->create_build_script;
