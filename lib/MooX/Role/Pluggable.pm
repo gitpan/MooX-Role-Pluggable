@@ -1,5 +1,5 @@
 package MooX::Role::Pluggable;
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use Moo::Role;
 
@@ -725,11 +725,9 @@ sub __plugin_by_ref {
 sub __plugin_get_plug_any {
   my ($self, $item) = @_;
 
-  my ($item_alias, $item_plug) = blessed $item ?
-    ( $self->__plugin_by_ref($item), $item )
-    : ( $item, $self->__plugin_by_alias($item) ) ;
-
-  wantarray ? ($item_alias, $item_plug) : $item_plug
+  ref $item ?
+    ( $self->__pluggable_loaded->{OBJ}->{$item}, $item )
+    : ( $item, $self->__pluggable_loaded->{ALIAS}->{$item} );
 }
 
 
