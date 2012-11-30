@@ -1,5 +1,5 @@
 package MooX::Role::Pluggable;
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 use 5.10.1;
 use Moo::Role;
@@ -13,7 +13,7 @@ use Try::Tiny;
 use MooX::Role::Pluggable::Constants;
 
 ##
-use namespace::clean -except => 'meta';
+use namespace::clean;
 
 
 has '__pluggable_opts' => (
@@ -90,17 +90,15 @@ sub _pluggable_process {
   my ($self, $type, $event, $args) = @_;
 
   ## This is essentially the same logic as Object::Pluggable.
-  ## Profiled and tightened up a bit:
+  ## Profiled, rewritten, and tightened up a bit;
   ##
   ##   - Error handling is much faster as a normal sub
   ##     Still need $self to dispatch _pluggable_event, but skipping method
   ##     resolution and passing $self on the stack added a few hundred 
-  ##     extra calls/sec.
+  ##     extra calls/sec, and override seems like an acceptable sacrifice
+  ##     Additionally our error handler is optimized
   ##
-  ##     Additionally our error handler does significantly less argument
-  ##     unpacking, only unpacking if there is actually an error to handle.
-  ##
-  ##   - We do not invoke the regex engine at all, saving a fair bit of 
+  ##   - Do not invoke the regex engine at all, saving a fair bit of 
   ##     time; checking index() and applying substr() as needed to strip
   ##     event prefixes is significantly quicker.
   ##
@@ -121,15 +119,17 @@ sub _pluggable_process {
 
   local $@;
 
-  if      ( my $sub = $self->can($meth) ) {
+  if      ( $self->can($meth) ) {
     ## Dispatch to ourself
-    eval {; $self_ret = $self->$sub($self, \(@$args), \@extra) };
-    ## Skipping method resolution got me over 7100 calls/sec on my system.
-    ## I'm not sorry:
+    eval {;
+      $self_ret = $self->$meth($self, \(@$args), \@extra)
+    };
     __plugin_process_chk($self, $self, $meth, $self_ret);
-  } elsif ( $sub = $self->can('_default') ) {
+  } elsif ( $self->can('_default') ) {
     ## Dispatch to _default
-    eval {; $self_ret = $self->$sub($self, $meth, \(@$args), \@extra) };
+    eval {;
+      $self_ret = $self->_default($self, $meth, \(@$args), \@extra)
+    };
     __plugin_process_chk($self, $self, '_default', $self_ret);
   }
 
@@ -139,43 +139,38 @@ sub _pluggable_process {
      ## Don't plugin-process, just return EAT_NONE.
      ## (Higher levels like Emitter can still pick this up.)
     return $retval
-  } elsif ($self_ret == EAT_CLIENT ) {
+  } elsif ( $self_ret == EAT_CLIENT ) {
      ## Plugin process, but return EAT_ALL after.
     $retval = EAT_ALL
-  } elsif ($self_ret == EAT_ALL ) {
+  } elsif ( $self_ret == EAT_ALL ) {
     return EAT_ALL
   }
 
   if (@extra) {
-    push @$args, @extra;
-    @extra = ();
+    push @$args, splice @extra, 0, scalar(@extra);
   }
 
   my $handle_ref = $self->__pluggable_loaded->{HANDLE};
-
   my $plug_ret;
-  PLUG: for my $thisplug (@{ $self->__pluggable_pipeline }) {
-
-    if ( 
-         $self == $thisplug
-      || (
-             !exists $handle_ref->{$thisplug}->{$type}->{$event}
-          && !exists $handle_ref->{$thisplug}->{$type}->{all}
-         )
-    ) {
-      next PLUG
-    }
-
+  PLUG: for my $thisplug (
+    grep {;
+        exists $handle_ref->{$_}->{$type}->{$event}
+        || exists $handle_ref->{$_}->{$type}->{all}
+        && $self != $_
+      } @{ $self->__pluggable_pipeline } )  {
     undef $plug_ret;
     ## Using by_ref is nicer, but the method call is too much overhead.
-    ## Gained ~2000 calls/sec by skipping it:
     my $this_alias = $self->__pluggable_loaded->{OBJ}->{$thisplug};
 
-    if      ( my $sub = $thisplug->can($meth) ) {
-      eval {; $plug_ret = $thisplug->$sub($self, \(@$args), \@extra) };
+    if      ( $thisplug->can($meth) ) {
+      eval {;
+        $plug_ret = $thisplug->$meth($self, \(@$args), \@extra)
+      };
       __plugin_process_chk($self, $thisplug, $meth, $plug_ret, $this_alias);
-    } elsif ( $sub = $thisplug->can('_default') ) {
-      eval {; $plug_ret = $thisplug->$sub($self, \(@$args), \@extra) };
+    } elsif ( $thisplug->can('_default') ) {
+      eval {;
+        $plug_ret = $thisplug->_default($self, \(@$args), \@extra)
+      };
       __plugin_process_chk($self, $thisplug, '_default', $plug_ret, $this_alias);
     }
 
@@ -196,8 +191,7 @@ sub _pluggable_process {
     }
 
     if (@extra) {
-      push @$args, @extra;
-      @extra = ();
+      push @$args, splice @extra, 0, scalar(@extra);
     }
 
   }  ## PLUG
@@ -225,9 +219,7 @@ sub __plugin_process_chk {
     );
 
     return
-  }
-
-  if (! defined $_[3] ||
+  } elsif (! defined $_[3] ||
       ( $_[3] != EAT_NONE   && $_[3] != EAT_ALL &&
         $_[3] != EAT_CLIENT && $_[3] != EAT_PLUGIN ) ) {
 
@@ -642,7 +634,7 @@ sub plugin_pipe_bump_down {
   my $pos = $idx + ($delta || 1);
 
   if ($pos >= @{ $self->__pluggable_pipeline }) {
-    carp "Cannot bump below end of pipeline, bumping to end"
+    carp "Cannot bump below end of pipeline, pushing to tail"
   }
 
   splice @{ $self->__pluggable_pipeline }, $pos, 0,
@@ -859,7 +851,7 @@ MooX::Role::Pluggable - Add a plugin pipeline to your cows
     return EAT_NONE
   }
 
-  ## A simple controller that interacts with our dispatcher.
+  ## An external package that interacts with our dispatcher.
   package MyController;
 
   use Moo;
@@ -887,8 +879,9 @@ A L<Moo::Role> for turning instances of your class into pluggable objects.
 Consumers of this role gain a plugin pipeline and methods to manipulate it,
 as well as a flexible dispatch system (see L</_pluggable_process>).
 
-The logic and behavior is based almost entirely on L<Object::Pluggable>. 
-Some methods are the same; implementation & interface differ some and you 
+The logic and behavior is based almost entirely on L<Object::Pluggable> 
+(see L</AUTHOR>). 
+Some methods are the same; implementation & interface differ and you 
 will still want to read thoroughly if coming from L<Object::Pluggable>. 
 Dispatch is significantly faster -- see L</Performance>.
 
@@ -1327,6 +1320,7 @@ repository; see L<https://github.com/avenj/moox-role-pluggable>)
 
 Jon Portnoy <avenj@cobaltirc.org>
 
-Based on L<Object::Pluggable> by BINGOS, HINRIK, APOCAL, japhy et al.
+Written from the ground up, but conceptually based entirely on 
+L<Object::Pluggable> by BINGOS, HINRIK, APOCAL, japhy et al.
 
 =cut

@@ -1,5 +1,17 @@
-use Test::More tests => 48;
+use Test::More;
 use strict; use warnings FATAL => 'all';
+
+use lib 't/inc';
+use MxRPTestUtils;
+
+my $dispatcher_got;
+my $dispatcher_expected = {
+  'P_test dispatch order correct' => 1,
+  'plugin_added args correct'     => 6,
+  'Got plugin_removed'            => 6,
+  '_default triggered'            => 1,
+  'EAT_CLIENT was eaten'          => 1,
+};
 
 {
   package
@@ -14,6 +26,7 @@ use strict; use warnings FATAL => 'all';
   sub process {
     my ($self, $event, @args) = @_;
     my $retval = $self->_pluggable_process( 'PROCESS', $event, \@args );
+    $retval
   }
 
   sub shutdown {
@@ -24,12 +37,18 @@ use strict; use warnings FATAL => 'all';
   sub do_test_events {
     my ($self) = @_;
 
-    dies_ok(sub { $self->_pluggable_init( types => '' ) });
-    dies_ok(sub { $self->_pluggable_process('type', 'event') });
+    dies_ok(sub { $self->_pluggable_init( types => '' ) },
+      'Bad args _pluggable_init dies'
+    );
+    dies_ok(sub { $self->_pluggable_process('type', 'event') },
+      'Bad args _pluggable_process dies'
+    );
 
     $self->process( 'test', 0 );
     $self->process( 'eatable' );
     $self->process( 'not_handled' );
+    $dispatcher_got->{'EAT_CLIENT was eaten'}++
+      if $self->process( 'eat_client' ) == EAT_ALL;
   }
 
   around '_pluggable_event' => sub {
@@ -40,8 +59,12 @@ use strict; use warnings FATAL => 'all';
   sub P_test {
     my ($self, undef) = splice @_, 0, 2;
     ++${ $_[0] };
+
     ## We should be first.
-    cmp_ok( ${ $_[0] }, '==', 1, 'P_test dispatch order correct' );
+    $dispatcher_got->{'P_test dispatch order correct'}++
+      if ${ $_[0] } == 1;
+
+    EAT_NONE
   }
 
   sub P_plugin_added {
@@ -49,12 +72,15 @@ use strict; use warnings FATAL => 'all';
     my ($self, undef) = splice @_, 0, 2;
     my $alias = ${ $_[0] };
     my $obj   = ${ $_[1] };
-    ok( ($alias && ref $obj), 'got plugin_added');
+
+    $dispatcher_got->{'plugin_added args correct'}++
+      if $alias and ref $obj;
+
     EAT_ALL
   }
 
   sub P_plugin_removed {
-    pass("got plugin_removed");
+    $dispatcher_got->{'Got plugin_removed'}++;
     EAT_ALL
   }
 
@@ -66,10 +92,21 @@ use strict; use warnings FATAL => 'all';
     my ($self, undef) = splice @_, 0, 2;
     my $event = $_[0];
 
-    cmp_ok( $event, 'eq', 'P_not_handled', '_default triggered' );
+    $dispatcher_got->{'_default triggered'}++
+      if $event eq 'P_not_handled';
+
     EAT_ALL
   }
 }
+
+
+my $pluginA_got;
+my $pluginA_expected = {
+  'Got plugin_register'   => 2,
+  'Got plugin_unregister' => 2,
+  'Got P_eatable'         => 1,
+  'P_test dispatch order correct' => 1,
+};
 
 {
   package
@@ -83,36 +120,54 @@ use strict; use warnings FATAL => 'all';
 
   sub plugin_register {
     my ($self, $core) = splice @_, 0, 2;
-    pass( __PACKAGE__ . ' plug registered' );
+
+    $pluginA_got->{'Got plugin_register'}++;
+
     $core->subscribe( $self, 'PROCESS', 'all' );
     EAT_NONE
   }
 
   sub plugin_unregister {
-    pass( "Plugin::A unregistered" );
+    $pluginA_got->{'Got plugin_unregister'}++;
+
+    EAT_NONE
+  }
+
+  sub P_eat_client {
+    EAT_CLIENT
   }
 
   sub P_eatable {
-    pass("Plugin::A got P_eatable");
+    $pluginA_got->{'Got P_eatable'}++;
+
     EAT_PLUGIN
   }
 
   sub P_test {
     my ($self, $core) = splice @_, 0, 2;
-    pass( "Plugin::A got P_test" );
     ++${ $_[0] };
-    cmp_ok( ${ $_[0] }, '>', 1, 'P_test dispatch order correct' );
+
+    $pluginA_got->{'P_test dispatch order correct'}++
+      if ${ $_[0] } > 1;
+
     EAT_NONE
   }
 
   sub _default {
     my ($self, undef) = splice @_, 0, 2;
     my $event = $_[0];
-
     ## Should have been EATen by dispatcher
     fail("_default should not have triggered in plugin");
   }
 }
+
+
+my $pluginB_got;
+my $pluginB_expected = {
+  'Got plugin_register'   => 1,
+  'Got plugin_unregister' => 1,
+  'Got P_test'            => 1,
+};
 
 {
   package
@@ -126,13 +181,17 @@ use strict; use warnings FATAL => 'all';
 
   sub plugin_register {
     my ($self, $core) = splice @_, 0, 2;
-    pass( __PACKAGE__ . ' plug registered' );
+
+    $pluginB_got->{'Got plugin_register'}++;
+
     $core->subscribe( $self, 'PROCESS', 'test', 'eatable' );
+
     EAT_NONE
   }
 
   sub plugin_unregister {
-    pass( "Plugin::B unregistered" );
+    $pluginB_got->{'Got plugin_unregister'}++;
+    EAT_NONE
   }
 
   sub P_eatable {
@@ -141,8 +200,12 @@ use strict; use warnings FATAL => 'all';
 
   sub P_test {
     my ($self, $core) = splice @_, 0, 2;
-    pass( "Plugin::B got P_test" );
+    $pluginB_got->{'Got P_test'}++;
     EAT_NONE
+  }
+
+  sub P_default {
+    fail("default should not have triggered in plug B");
   }
 }
 
@@ -155,8 +218,10 @@ ok( $disp->does('MooX::Role::Pluggable'), 'Class does Role' );
 ok( $disp->plugin_add( 'MyPlugA', MyPlugin::A->new ), 'plugin_add()' );
 ok( $disp->plugin_add( 'MyPlugB', MyPlugin::B->new ), 'plugin_add() 2' );
 
+
 ## test events
 $disp->do_test_events;
+
 
 ## plugin_get()
 {
@@ -247,3 +312,18 @@ ok( $disp->plugin_pipe_insert_before(
 cmp_ok($disp->plugin_pipe_get_index('NewPlugC'), '==', 1, 'NewPlugC at pos 1' );
 
 $disp->shutdown;
+
+test_expected_ok( $dispatcher_got, $dispatcher_expected,
+  'Got expected results from Dispatcher'
+);
+
+test_expected_ok( $pluginA_got, $pluginA_expected,
+  'Got expected results from Plugin A'
+);
+
+test_expected_ok( $pluginB_got, $pluginB_expected,
+  'Got expected results from Plugin B'
+);
+
+
+done_testing();
