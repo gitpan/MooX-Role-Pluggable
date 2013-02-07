@@ -12,6 +12,7 @@ my %WriteMakefileArgs = (
   "ABSTRACT" => "Add a plugin pipeline to your cows",
   "AUTHOR" => "Jon Portnoy <avenj\@cobaltirc.org>",
   "BUILD_REQUIRES" => {
+    "Test::Exception" => 0,
     "Test::More" => "0.88"
   },
   "CONFIGURE_REQUIRES" => {
@@ -27,9 +28,10 @@ my %WriteMakefileArgs = (
     "Scalar::Util" => 0,
     "Try::Tiny" => 0,
     "namespace::clean" => "0.23",
+    "parent" => 0,
     "strictures" => 1
   },
-  "VERSION" => "0.120001",
+  "VERSION" => "0.120002",
   "test" => {
     "TESTS" => "t/*.t"
   }
