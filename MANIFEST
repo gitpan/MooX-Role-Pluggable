@@ -10,6 +10,7 @@ bench/pluggable.pl
 dist.ini
 lib/MooX/Role/Pluggable.pm
 lib/MooX/Role/Pluggable/Constants.pm
+t/00-report-prereqs.t
 t/01_plug.t
 t/02_manip.t
 t/inc/MxRPTestUtils.pm

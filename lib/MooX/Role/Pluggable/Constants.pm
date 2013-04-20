@@ -1,16 +1,13 @@
 package MooX::Role::Pluggable::Constants;
 {
-  $MooX::Role::Pluggable::Constants::VERSION = '0.120002';
+  $MooX::Role::Pluggable::Constants::VERSION = '0.120003';
 }
-
 use strictures 1;
 
-use constant {
-  EAT_NONE   => 1,
-  EAT_CLIENT => 2,
-  EAT_PLUGIN => 3,
-  EAT_ALL    => 4,
-};
+sub EAT_NONE   () { 1 }
+sub EAT_CLIENT () { 2 }
+sub EAT_PLUGIN () { 3 }
+sub EAT_ALL    () { 4 }
 
 use parent 'Exporter';
 
@@ -25,6 +22,12 @@ our @EXPORT = qw/
 1;
 
 =pod
+
+=begin Pod::Coverage
+
+EAT.+
+
+=end Pod::Coverage
 
 =head1 NAME
 

@@ -1,6 +1,6 @@
 package MooX::Role::Pluggable;
 {
-  $MooX::Role::Pluggable::VERSION = '0.120002';
+  $MooX::Role::Pluggable::VERSION = '0.120003';
 }
 
 use 5.10.1;
@@ -14,7 +14,7 @@ use Try::Tiny;
 
 use MooX::Role::Pluggable::Constants;
 
-##
+
 use namespace::clean;
 
 
@@ -54,7 +54,6 @@ sub _pluggable_destroy {
 sub _pluggable_event {
   ## This should be overriden to handle Pluggable events
   ##  ( plugin_{added, removed, error} )
-  return
 }
 
 sub _pluggable_init {
@@ -891,7 +890,8 @@ It may be worth noting that this is nothing at all like the Moose
 counterpart L<MooseX::Role::Pluggable>. If the names confuse ... well, I 
 lacked for better ideas. ;-)
 
-If you're using L<POE>, also see L<MooX::Role::POE::Emitter>.
+If you're using L<POE>, also see L<MooX::Role::POE::Emitter>, which consumes
+this role.
 
 =head2 Initialization
 

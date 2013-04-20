@@ -132,7 +132,8 @@ DESCRIPTION
     counterpart MooseX::Role::Pluggable. If the names confuse ... well, I
     lacked for better ideas. ;-)
 
-    If you're using POE, also see MooX::Role::POE::Emitter.
+    If you're using POE, also see MooX::Role::POE::Emitter, which consumes
+    this role.
 
   Initialization
    _pluggable_init
