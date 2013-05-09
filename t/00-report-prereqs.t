@@ -17,7 +17,6 @@ my @modules = qw(
   Test::Exception
   Test::More
   Try::Tiny
-  namespace::clean
   parent
   perl
   strictures

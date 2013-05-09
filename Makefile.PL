@@ -24,7 +24,6 @@ my %WriteMakefileArgs = (
     "Moo" => "1.000007",
     "Scalar::Util" => 0,
     "Try::Tiny" => 0,
-    "namespace::clean" => "0.23",
     "parent" => 0,
     "strictures" => 1
   },
@@ -32,7 +31,7 @@ my %WriteMakefileArgs = (
     "Test::Exception" => 0,
     "Test::More" => "0.88"
   },
-  "VERSION" => "0.120003",
+  "VERSION" => "0.120004",
   "test" => {
     "TESTS" => "t/*.t"
   }

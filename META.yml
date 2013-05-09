@@ -19,10 +19,9 @@ requires:
   Moo: 1.000007
   Scalar::Util: 0
   Try::Tiny: 0
-  namespace::clean: 0.23
   parent: 0
   perl: v5.10.1
   strictures: 1
 resources:
   repository: git://github.com/avenj/moox-role-pluggable.git
-version: 0.120003
+version: 0.120004
