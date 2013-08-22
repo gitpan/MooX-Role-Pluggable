@@ -14,5 +14,11 @@ t/00-report-prereqs.t
 t/01_plug.t
 t/02_manip.t
 t/inc/MxRPTestUtils.pm
+t/release-cpan-changes.t
+t/release-dist-manifest.t
+t/release-no-tabs.t
 t/release-pod-coverage.t
+t/release-pod-linkcheck.t
 t/release-pod-syntax.t
+t/release-synopsis.t
+t/release-unused-vars.t

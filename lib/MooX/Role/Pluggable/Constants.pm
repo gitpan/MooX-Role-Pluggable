@@ -1,6 +1,6 @@
 package MooX::Role::Pluggable::Constants;
 {
-  $MooX::Role::Pluggable::Constants::VERSION = '0.120004';
+  $MooX::Role::Pluggable::Constants::VERSION = '0.120005';
 }
 use strictures 1;
 

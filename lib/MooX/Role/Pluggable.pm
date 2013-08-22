@@ -1,6 +1,6 @@
 package MooX::Role::Pluggable;
 {
-  $MooX::Role::Pluggable::VERSION = '0.120004';
+  $MooX::Role::Pluggable::VERSION = '0.120005';
 }
 
 use 5.10.1;
@@ -444,7 +444,8 @@ sub plugin_pipe_unshift {
   my ($self, $alias, $plug, @args) = @_;
 
   if (my $existing = $self->__plugin_by_alias($alias) ) {
-    carp "Already have plugin $alias : $existing";
+    $@ = "Already have plugin $alias : $existing";
+    carp $@;
     return
   }
 
@@ -702,8 +703,8 @@ sub __plug_pipe_unregister {
   }
 
   delete $self->__pluggable_loaded->{ALIAS}->{$old_alias};
-  delete $self->__pluggable_loaded->{OBJ}->{$old_plug};
-  delete $self->__pluggable_loaded->{HANDLE}->{$old_plug};
+  delete $self->__pluggable_loaded->{$_}->{$old_plug}
+    for qw/ OBJ HANDLE /;
 
   $self->_pluggable_event(
     $self->__pluggable_opts->{ev_prefix} . "plugin_removed",
@@ -747,6 +748,11 @@ sub __plugin_get_plug_any {
     : ( $item, $self->__pluggable_loaded->{ALIAS}->{$item} );
 }
 
+
+print
+  qq[<F2> How can I run two separate process at the same time simultaneously?\n],
+  qq[<dngor> I'd use an operating system, and have it run them for me.\n]
+unless caller;
 
 1;
 
@@ -861,7 +867,7 @@ MooX::Role::Pluggable - Add a plugin pipeline to your cows
     # Arguments are references and can be modified:
     my $arg = ${ $_[0] };
 
-    . . .
+    # ... do some work ...
 
     # Return an EAT constant to control event lifetime
     # EAT_NONE allows this event to continue through the pipeline
