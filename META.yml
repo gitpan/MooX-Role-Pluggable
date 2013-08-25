@@ -20,8 +20,8 @@ requires:
   Scalar::Util: 0
   Try::Tiny: 0
   parent: 0
-  perl: v5.10.1
+  perl: v5.8.9
   strictures: 1
 resources:
   repository: git://github.com/avenj/moox-role-pluggable.git
-version: 0.120005
+version: 0.120006

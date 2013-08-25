@@ -34,7 +34,7 @@
             "Scalar::Util" : "0",
             "Try::Tiny" : "0",
             "parent" : "0",
-            "perl" : "v5.10.1",
+            "perl" : "v5.8.9",
             "strictures" : "1"
          }
       },
@@ -53,6 +53,6 @@
          "web" : "https://github.com/avenj/moox-role-pluggable"
       }
    },
-   "version" : "0.120005"
+   "version" : "0.120006"
 }
 
