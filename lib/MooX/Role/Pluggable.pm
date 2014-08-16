@@ -1,13 +1,12 @@
 package MooX::Role::Pluggable;
-{
-  $MooX::Role::Pluggable::VERSION = '0.120006';
-}
-
+$MooX::Role::Pluggable::VERSION = '1.001001';
 use Carp;
 use strictures 1;
 
 use Scalar::Util 'blessed';
 use Try::Tiny;
+
+use Types::Standard -all;
 
 use MooX::Role::Pluggable::Constants;
 
@@ -15,9 +14,15 @@ use MooX::Role::Pluggable::Constants;
 use Moo::Role;
 
 
-has '__pluggable_opts' => (
-  is  => 'ro',
-  default => sub {
+has __pluggable_opts => (
+  lazy        => 1,
+  is          => 'ro',
+  isa         => Dict[
+    reg_prefix => Str,
+    ev_prefix  => Str,
+    types      => HashRef,
+  ],
+  builder     => sub {
    +{
       reg_prefix => 'plugin_',
       ev_prefix  => 'plugin_ev_',
@@ -26,20 +31,28 @@ has '__pluggable_opts' => (
   },
 );
 
-has '__pluggable_loaded' => (
-  is      => 'ro',
-  default => sub { 
+has __pluggable_loaded => (
+  lazy        => 1,
+  is          => 'ro',
+  isa         => Dict[
+    ALIAS   => HashRef, 
+    OBJ     => HashRef,
+    HANDLE  => HashRef,
+  ],
+  builder     => sub { 
    +{
-      ALIAS  => {},  # Objs keyed by aliases
-      OBJ    => {},  # Aliases keyed by obj
-      HANDLE => {},  # Type/event map hashes keyed by obj
+      ALIAS  => +{},  # Objs keyed by aliases
+      OBJ    => +{},  # Aliases keyed by obj
+      HANDLE => +{},  # Type/event map hashes keyed by obj
     },
   },
 );
 
-has '__pluggable_pipeline' => (
-  is      => 'ro',
-  default => sub { [] },
+has __pluggable_pipeline => (
+  lazy        => 1,
+  is          => 'ro',
+  isa         => ArrayRef,
+  builder     => sub { [] },
 );
 
 
@@ -57,24 +70,22 @@ sub _pluggable_init {
   my ($self, %params) = @_;
   $params{lc $_} = delete $params{$_} for keys %params;
 
-  my $reg_prefix = 
-    defined $params{register_prefix} ? $params{register_prefix}
-    : $params{reg_prefix};
+  my $reg_prefix = defined $params{register_prefix} ? 
+    $params{register_prefix} : $params{reg_prefix};
   $self->__pluggable_opts->{reg_prefix} = $reg_prefix
     if defined $reg_prefix;
 
-  my $ev_prefix =
-    defined $params{event_prefix} ? $params{event_prefix}
-    : $params{ev_prefix};
+  my $ev_prefix = defined $params{event_prefix} ? 
+    $params{event_prefix} : $params{ev_prefix};
   $self->__pluggable_opts->{ev_prefix} = $ev_prefix
     if defined $ev_prefix;
 
   if (defined $params{types}) {
     $self->__pluggable_opts->{types} = 
-      ref $params{types} eq 'ARRAY' ?
-        +{ map {; $_ => $_ } @{ $params{types} } }
+        ref $params{types} eq 'ARRAY' ?
+          +{ map {; $_ => $_ } @{ $params{types} } }
       : ref $params{types} eq 'HASH' ? 
-        $params{types}
+          $params{types}
       : confess 'Expected ARRAY or HASH but got '.$params{types};
   }
 
@@ -105,15 +116,13 @@ sub _pluggable_process {
   }
 
   my $prefix = $self->__pluggable_opts->{ev_prefix};
-  substr($event, 0, length($prefix), '')
-    if index($event, $prefix) == 0;
+  substr($event, 0, length($prefix), '') if index($event, $prefix) == 0;
 
   my $meth = $self->__pluggable_opts->{types}->{$type} .'_'. $event;
 
   my ($retval, $self_ret, @extra) = EAT_NONE;
 
   local $@;
-
   if      ( $self->can($meth) ) {
     # Dispatch to ourself
     eval {;
@@ -142,7 +151,7 @@ sub _pluggable_process {
   }
 
   if (@extra) {
-    push @$args, splice @extra, 0, scalar(@extra);
+    push @$args, splice @extra, 0, scalar(@extra)
   }
 
   my $handle_ref = $self->__pluggable_loaded->{HANDLE};
@@ -332,31 +341,24 @@ sub plugin_replace {
 sub subscribe {
   my ($self, $plugin, $type, @events) = @_;
 
-  if (!grep { $_ eq $type } keys %{ $self->__pluggable_opts->{types} }) {
-    carp "Cannot subscribe; event type $type not supported";
-    return
-  }
+  confess "Cannot subscribe; event type $type not supported"
+    unless exists $self->__pluggable_opts->{types}->{$type};
 
-  unless (@events) {
-    carp
-      "Expected a plugin object, a type, and a list of events";
-    return
-  }
+  confess "Expected a plugin object, a type, and a list of events"
+    unless @events;
 
-  unless (blessed $plugin) {
-    carp "Expected a blessed plugin object";
-    return
-  }
+  confess "Expected a blessed plugin object" unless blessed $plugin;
 
   my $handles
-    = $self->__pluggable_loaded->{HANDLE}->{$plugin}->{$type} ||= {};
+      = $self->__pluggable_loaded->{HANDLE}->{$plugin}->{$type} 
+    ||= +{};
 
   for my $ev (@events) {
     if (ref $ev eq 'ARRAY') {
       $handles->{$_} = 1 for @$ev;
-    } else {
-      $handles->{$ev} = 1;
+      next
     }
+    $handles->{$ev} = 1
   }
 
   1
@@ -365,27 +367,19 @@ sub subscribe {
 sub unsubscribe {
   my ($self, $plugin, $type, @events) = @_;
 
-  if (!grep { $_ eq $type } keys %{ $self->__pluggable_opts->{types} }) {
-    carp "Cannot unsubscribe; event type $type not supported";
-    return
-  }
+  confess "Cannot unsubscribe; event type $type not supported"
+    unless exists $self->__pluggable_opts->{types}->{$type};
 
-  unless (blessed $plugin && defined $type) {
-    carp
-      "Expected a blessed plugin obj, event type, and events to unsubscribe";
-    return
-  }
+  confess "Expected a blessed plugin obj, event type, and events to unsubscribe"
+    unless blessed $plugin and defined $type;
 
-  unless (@events) {
-    carp "No events specified; did you mean to plugin_del instead?";
-    return
-  }
+  confess "No events specified; did you mean to plugin_del instead?"
+    unless @events;
 
-  my $handles
-    = $self->__pluggable_loaded->{HANDLE}->{$plugin}->{$type} || {};
+  my $handles = 
+    $self->__pluggable_loaded->{HANDLE}->{$plugin}->{$type} || +{};
 
   for my $ev (@events) {
-
     if (ref $ev eq 'ARRAY') {
       for my $this_ev (@$ev) {
         unless (delete $handles->{$this_ev}) {
@@ -585,8 +579,8 @@ sub plugin_pipe_insert_after {
 
   return unless $self->__plug_pipe_register(
     $params{alias}, $params{plugin},
-    (
-      ref $params{register_args} eq 'ARRAY' ?
+    ( 
+      ref $params{register_args} eq 'ARRAY' ? 
         @{ $params{register_args} } : ()
     ),
   );
@@ -876,7 +870,7 @@ MooX::Role::Pluggable - Add a plugin pipeline to your cows
   package MyController;
   use Moo;
 
-  has 'dispatcher' => (
+  has dispatcher => (
     is      => 'rw',
     default => sub {  MyDispatcher->new()  },
   );

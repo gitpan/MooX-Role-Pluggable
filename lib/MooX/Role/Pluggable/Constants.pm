@@ -1,7 +1,5 @@
 package MooX::Role::Pluggable::Constants;
-{
-  $MooX::Role::Pluggable::Constants::VERSION = '0.120006';
-}
+$MooX::Role::Pluggable::Constants::VERSION = '1.001001';
 use strictures 1;
 
 sub EAT_NONE   () { 1 }

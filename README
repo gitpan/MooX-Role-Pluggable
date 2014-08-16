@@ -119,7 +119,7 @@ SYNOPSIS
       package MyController;
       use Moo;
 
-      has 'dispatcher' => (
+      has dispatcher => (
         is      => 'rw',
         default => sub {  MyDispatcher->new()  },
       );

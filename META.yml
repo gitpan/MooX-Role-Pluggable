@@ -3,12 +3,17 @@ abstract: 'Add a plugin pipeline to your cows'
 author:
   - 'Jon Portnoy <avenj@cobaltirc.org>'
 build_requires:
+  ExtUtils::MakeMaker: 0
+  File::Spec: 0
+  List::Util: 0
+  Scalar::Util: 0
   Test::Exception: 0
   Test::More: 0.88
+  version: 0.77
 configure_requires:
-  ExtUtils::MakeMaker: 6.30
+  ExtUtils::MakeMaker: 0
 dynamic_config: 0
-generated_by: 'Dist::Zilla version 4.300035, CPAN::Meta::Converter version 2.120921'
+generated_by: 'Dist::Zilla version 5.020, CPAN::Meta::Converter version 2.142060'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -17,11 +22,13 @@ name: MooX-Role-Pluggable
 requires:
   Carp: 0
   Moo: 1.000007
+  MooX::late: 0.014
   Scalar::Util: 0
   Try::Tiny: 0
+  Type::Tiny: 0
   parent: 0
   perl: v5.8.9
   strictures: 1
 resources:
   repository: git://github.com/avenj/moox-role-pluggable.git
-version: 0.120006
+version: 1.001001

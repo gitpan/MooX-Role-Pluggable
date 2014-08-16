@@ -8,9 +8,29 @@ BEGIN {
 
 use strict;
 use warnings;
-use Test::More;
 
-eval 'use Test::NoTabs';
-plan skip_all => 'Test::NoTabs required' if $@;
+# this test was generated with Dist::Zilla::Plugin::Test::NoTabs 0.08
 
-all_perl_files_ok();
+use Test::More 0.88;
+use Test::NoTabs;
+
+my @files = (
+    'lib/MooX/Role/Pluggable.pm',
+    'lib/MooX/Role/Pluggable/Constants.pm',
+    't/00-report-prereqs.dd',
+    't/00-report-prereqs.t',
+    't/01_plug.t',
+    't/02_manip.t',
+    't/inc/MxRPTestUtils.pm',
+    't/release-cpan-changes.t',
+    't/release-dist-manifest.t',
+    't/release-no-tabs.t',
+    't/release-pod-coverage.t',
+    't/release-pod-linkcheck.t',
+    't/release-pod-syntax.t',
+    't/release-synopsis.t',
+    't/release-unused-vars.t'
+);
+
+notabs_ok($_) foreach @files;
+done_testing;
